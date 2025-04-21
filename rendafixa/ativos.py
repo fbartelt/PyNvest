@@ -1,10 +1,10 @@
 import numpy as np
 from abc import ABC, abstractmethod
-from rendafixa.utils import rendimentos, irpf, iof, tempo2dia, round_taxa, cdi2taxa
+from rendafixa.utils import rendimentos, irpf, iof, tempo2dia, round_taxa, cdi2taxa, rendimento_real
 
-#definicao das contantes (selic, ipca, di, tr)
-SELIC = 10.5
-IPCA = 3.926
+# definicao das constantes (selic, ipca, di, tr)
+SELIC = 14.25
+IPCA = 5.48
 DI = (SELIC - 0.1)/100
 TR = 0.5 # taxa referencial (poupanca)
 
@@ -18,18 +18,54 @@ class Investimento(ABC):
     @abstractmethod
     def rendimento_liquido(self):
         pass
+    
+    @abstractmethod
+    def rendimento_bruto(self):
+        pass
+
+    @abstractmethod
+    def impostos(self):
+        pass
+
+    @property
+    def valor(self):
+        """Retorna o valor atual do investimento."""
+        return self._valor
+
+    @valor.setter
+    def valor(self, novo_valor):
+        """Define um novo valor para o investimento, garantindo que ele seja positivo."""
+        if novo_valor <= 0:
+            raise ValueError("O valor do investimento deve ser positivo.")
+        self._valor = novo_valor
+
+    def _string_taxa(self):
+        if isinstance(self.taxa, (tuple, list)):
+            return f"{self.taxa[0]*100:.2f} + {self.taxa[1]*100:.2f}"
+        else:
+            return f"{self.taxa*100:.2f}"
+
+    def _header(self):
+        taxa = self._string_taxa()
+        msg = "-"*70 + "\n"
+        msg += f"{self.nome} - Taxa: {taxa}% (Valor: {self._valor}, Prazo: {self.prazo} dias)"
+        return msg
+    
+    def _footer(self):
+        bruto = self.rendimento_bruto()
+        liquido = self.rendimento_liquido()
+        imposto = self.impostos()
+        total = self.rendimento_liquido() + self._valor
+        msg = f"Rendimento Bruto: {bruto:.2f}, Imposto: {imposto:.2f}\n"
+        msg += f"Rendimento Liquido: {liquido:.2f}    Total: {total:.2f}"
+        rendimento_real_ = rendimento_real(total, IPCA, self.prazo, unidade='dia')
+        msg += f"\nRendimento Real: {rendimento_real_:.2f} (adotando inflação de {IPCA}%a.a.)"
+        return msg
 
     def __str__(self) -> str:
-        if isinstance(self.taxa, (tuple, list)):
-            taxa = f"{self.taxa[0]*100:.2f} + {self.taxa[1]*100:.2f}"
-        else:
-            taxa = f"{self.taxa*100:.2f}"
-        msg = "---------------------------------------------------------------\n"
-        msg += f"{self.nome} - Taxa: {taxa}% (Valor: {self._valor}, "
-        msg += f"Prazo: {self.prazo} dias)\n   "
-        msg += f"Rendimento Bruto: {self.rendimento_bruto():.2f},  "
-        msg += f"Imposto: {self.impostos():.2f},  "
-        msg += f"Total: {self.rendimento_liquido() + self._valor:.2f}"
+        header = self._header()
+        footer = self._footer()
+        msg = f"{header}\n{footer}"
         return msg
 
     def __repr__(self) -> str:
@@ -54,7 +90,6 @@ class LCI_LCA(CDB):
 
 
 class TesouroDireto(CDB):
-    #TODO adicionar taxa custodia 0.2%a.a. para todos que nao sao tesouro selic
     def custodia(self, valor=None):
         if valor is None:
             valor = self._valor
@@ -63,9 +98,17 @@ class TesouroDireto(CDB):
     def impostos(self):
         return super().impostos() + self.custodia()
     
-    def __str__(self) -> str:
-        old = super().__str__()
-        return old + f"\nTaxa Custódia: {self.custodia():.2f}"
+    def _footer(self):
+        bruto = self.rendimento_bruto()
+        liquido = self.rendimento_liquido()
+        custodia = self.custodia()
+        imposto = self.impostos() - custodia
+        total = self.rendimento_liquido() + self._valor
+        msg = f"Rendimento Bruto: {bruto:.2f}, Imposto + Custodia: {imposto:.2f} + {custodia:.2f}\n"
+        msg += f"Rendimento Liquido: {liquido:.2f}    Total: {total:.2f}"
+        rendimento_real_ = rendimento_real(total, IPCA, self.prazo, unidade='dia')
+        msg += f"\nRendimento Real: {rendimento_real_:.2f} (adotando inflação de {IPCA}%a.a.)"
+        return msg
     
 class FundoInvestimento(CDB):
     def __init__(self, valor, prazo, taxa, taxa_adm, nome="Fundo de Investimento"):
@@ -81,9 +124,17 @@ class FundoInvestimento(CDB):
     def impostos(self):
         return super().impostos() + self.adm()
 
-    def __str__(self) -> str:
-        old = super().__str__()
-        return old + f"\nTaxa de Administração: {self.taxa_adm*100:.2f}%"
+    def _footer(self):
+        bruto = self.rendimento_bruto()
+        liquido = self.rendimento_liquido()
+        adm_ = self.adm()
+        imposto = self.impostos() - adm_
+        total = self.rendimento_liquido() + self._valor
+        msg = f"Rendimento Bruto: {bruto:.2f}, Imposto + Administração: {imposto:.2f} + {adm_:.2f}\n"
+        msg += f"Rendimento Liquido: {liquido:.2f}    Total: {total:.2f}"
+        rendimento_real_ = rendimento_real(total, IPCA, self.prazo, unidade='dia')
+        msg += f"\nRendimento Real: {rendimento_real_:.2f} (adotando inflação de {IPCA}%a.a.)"
+        return msg
 
 class Poupanca(Investimento):
     def __init__(self, valor, prazo, selic=SELIC, tr=TR, nome="Poupança"):
@@ -109,14 +160,77 @@ class Poupanca(Investimento):
         return 0
 
 class CDBPreFixado(CDB):
-    def __init__(self, valor, prazo, taxa_fixa, unidade="dia", nome="CDB Pré-Fixado"):
+    """Investimento em CDB com rentabilidade pré-fixada.
+
+    Esta classe modela um Certificado de Depósito Bancário (CDB) com uma taxa de 
+    rentabilidade anual fixa, herdando da classe `CDB` genérica.
+
+    Parameters
+    ----------
+    valor : float
+        O valor do investimento no CDB.
+    prazo : int
+        O prazo do investimento, na unidade especificada.
+    rentabilidade : float
+        A taxa de rentabilidade anual do CDB em percentual (ex.: 8.5 para 8,5% ao ano).
+    unidade : str, optional
+        Unidade de tempo para o prazo, como "dia", "mes" ou "ano". O valor padrão é "dia".
+    nome : str, optional
+        O nome do investimento. O valor padrão é "CDB Pré-Fixado".
+
+    Attributes
+    ----------
+    taxa : float
+        Taxa de rentabilidade anual do CDB no formato decimal, calculada com base 
+        na rentabilidade percentual fornecida.
+
+    Examples
+    --------
+    Criar uma instância de CDB pré-fixado e acessar a taxa de rentabilidade:
+
+    >>> cdb = CDBPreFixado(valor=1000, prazo=365, rentabilidade=8.5, unidade="dia")
+    """
+    def __init__(self, valor, prazo, rentabilidade, unidade="dia", nome="CDB Pré-Fixado"):
         super().__init__(valor, tempo2dia(prazo, unidade), nome)
-        self.taxa = round_taxa(taxa_fixa/100)
+        self.taxa = round_taxa(rentabilidade/100)
 
 
 class CDB_CDI(CDB):
-    def __init__(self, valor, prazo, taxa, selic=None, di=None, unidade="dia", nome="CDB CDI"):
-        """ taxa = X% CDI """
+    """Investimento em CDB com rentabilidade atrelada ao CDI.
+
+    Esta classe modela um Certificado de Depósito Bancário (CDB) com uma taxa de
+    rentabilidade atrelada ao CDI, herdando da classe `CDB` genérica.
+
+    Parameters
+    ----------
+    valor : float
+        O valor do investimento no CDB.
+    prazo : int
+        O prazo do investimento, na unidade especificada.
+    rentabilidade : float
+        A taxa de rentabilidade do CDB em percentual do CDI (ex.: 125 para 125% do CDI).
+    selic : float, optional
+        A taxa SELIC em percentual, utilizada para calcular o CDI. O valor padrão é `SELIC`.
+    di : float, optional
+        A taxa DI em percentual, utilizada para calcular o CDI. O valor padrão é SELIC-0.1%.
+    unidade : str, optional
+        Unidade de tempo para o prazo, como "dia", "mes" ou "ano". O valor padrão é "dia".
+    nome : str, optional
+        O nome do investimento. O valor padrão é "CDB CDI".
+    
+    Attributes
+    ----------
+    taxa : float
+        Taxa de rentabilidade anual do CDB no formato decimal, calculada com base 
+        na rentabilidade percentual fornecida.
+    
+    Examples
+    --------
+    Criar uma instância de CDB atrelado ao CDI e acessar a taxa de rentabilidade:
+
+    >>> cdb = CDB_CDI(valor=1000, prazo=365, rentabilidade=125, selic=10.5, di=10.4, unidade="dia")
+    """
+    def __init__(self, valor, prazo, rentabilidade, selic=None, di=None, unidade="dia", nome="CDB CDI"):
         if selic is None:
             print(f"Selic não informada, utilizando valor padrão de {SELIC}%")
             self.selic = SELIC
@@ -128,12 +242,12 @@ class CDB_CDI(CDB):
         else:
             self.di = di
         super().__init__(valor, tempo2dia(prazo, unidade), nome)
-        self.taxa = round_taxa(cdi2taxa(taxa, self.di))
+        self.taxa = round_taxa(cdi2taxa(rentabilidade, self.di))
 
 
 class CDB_IPCA(CDB):
     def __init__(
-        self, valor, prazo, taxa, ipca=None, unidade="dia", nome="CDB IPCA+"
+        self, valor, prazo, rentabilidade, ipca=None, unidade="dia", nome="CDB IPCA+"
     ):
         if ipca is None:
             print(f"IPCA não informado, utilizando valor padrão de {IPCA}%")
@@ -141,7 +255,7 @@ class CDB_IPCA(CDB):
         else:
             self.ipca = ipca
         super().__init__(valor, tempo2dia(prazo, unidade), nome)
-        self.taxa = round_taxa((self.ipca/100, taxa/100))
+        self.taxa = round_taxa((self.ipca/100, rentabilidade/100))
 
 
 class LCI_LCAPreFixado(LCI_LCA):

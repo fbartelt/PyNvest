@@ -15,43 +15,43 @@ from rendafixa.ativos import (
     FI_incentivada
 )
 
-valor = 1000
-prazo = 720
+valor = 2500
+prazo = 360
 # print(f'Valor: {valor}, Prazo: {prazo}')
 # print('-------------------------------------')
 
-ipca = 4.42
-selic = 11.25
+ipca = 4.56
+selic = 13.25
 di = selic - 0.1
 tr = 0.5
 
 # Conta real para X% CDI:
 # (((di + 1) **(1/252) - 1) * (X/100) + 1)**252 - 1
-cdb_pre = CDBPreFixado(valor, prazo, taxa_fixa=14, unidade="dia", nome=r"CDB C6 (14%a.a)")
+cdb_pre = CDBPreFixado(valor, prazo, rentabilidade=14.6, unidade="dia", nome=r"CDB Fibra (14,6%aa)")
 print(cdb_pre)
 cdb_pos = CDB_CDI(
-    valor, prazo, 125, selic=selic, di=di, unidade="dia", nome=r"CDB Master (125%CDI)"
+    valor, prazo, 106.5, selic=selic, di=di, unidade="dia", nome=r"CDB NEON (106.5%CDI)"
 )
 print(cdb_pos)
 cdb_hib = CDB_IPCA(
-    valor, prazo, taxa=7.5, ipca=ipca, unidade="dia", nome=r"CDB BMG (IPCA+7.5)"
+    valor, prazo, rentabilidade=8.6, ipca=ipca, unidade="dia", nome=r"CDB MASTER (IPCA+8.6)"
 )
 print(cdb_hib)
-lci_pre = LCI_LCAPreFixado(valor, prazo, 11.8, nome=r"Inter LCA PRE 720dias (Pre 11.8%)")
+lci_pre = LCI_LCAPreFixado(valor, prazo, 12.8, nome=r"Inter LCA PRE 360dias (12.8%)")
 print(lci_pre)
 lci_pos = LCI_LCA_CDI(
-    valor, prazo, taxa=92, selic=selic, di=di, unidade="dia", nome=r"LCA ABC (92%CDI)"
+    valor, prazo, taxa=93, selic=selic, di=di, unidade="dia", nome=r"LCI DI 360 (93%CDI)"
 )
 print(lci_pos)
 lci_hib = LCI_LCA_IPCA(
-    valor, prazo, taxa=5.5, ipca=ipca, unidade="dia", nome=r"LCA BTG (ipca+5.5)"
+    valor, prazo, taxa=6.02, ipca=ipca, unidade="dia", nome=r"Inter LCI IPCA FINAL 3ANOS (ipca+6.02)"
 )
 print(lci_hib)
-tes_pre = TesouroPreFixado(valor, prazo, 12.97, nome=r"Tesouro Prefixado (2031) 12.97%")
+tes_pre = TesouroPreFixado(valor, prazo, 14.74, nome=r"Tesouro Prefixado (2032) 14.74%aa")
 print(tes_pre)
-tes_pos = Tesouro_Selic(valor, prazo, 0.12, selic, nome=r"Tesouro Selic(2029) + 0.12%")
+tes_pos = Tesouro_Selic(valor, prazo, 0.12, selic, nome=r"Tesouro Selic(2031) + 0.12%")
 print(tes_pos)
-tes_hib = Tesouro_IPCA(valor, prazo, 6.86, ipca, nome=r"Tesouro IPCA+ (2029) 6.86%")
+tes_hib = Tesouro_IPCA(valor, prazo, 7.62, ipca, nome=r"Tesouro IPCA+ (2029) 7.62%")
 print(tes_hib)
 poup = Poupanca(valor, prazo, selic, tr)
 print(poup)

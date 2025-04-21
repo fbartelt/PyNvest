@@ -56,3 +56,6 @@ def iof(rendimento, tempo, unidade='dia'):
     
 def cdi2taxa(taxa, di):
     return (((di/100 + 1) **(1/252) - 1) * (taxa/100) + 1)**252 - 1
+
+def rendimento_real(valor, ipca, tempo, unidade='dia'):
+    return valor * (1 + ipca/100)**(tempo2ano(tempo, unidade)) - valor
